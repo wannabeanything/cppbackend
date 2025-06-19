@@ -1,6 +1,6 @@
 #include "audio.h"
 #include <iostream>
-
+#include <boost/asio.hpp>
 using namespace std::literals;
 
 int main(int argc, char** argv) {
