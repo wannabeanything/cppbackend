@@ -3,3 +3,4 @@ boost/1.84.0
 
 [generators]
 cmake_multi
+
