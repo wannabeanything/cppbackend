@@ -32,6 +32,6 @@ USER www
 # Не забываем также папку data, она пригодится.
 COPY --from=build /app/build/game_server /app/
 COPY ./data /app/data
-
+COPY ./static /app/static
 # Запускаем игровой сервер
-ENTRYPOINT ["/app/game_server", "/app/data/config.json"] 
+ENTRYPOINT ["/app/game_server", "/app/data/config.json", "/app/static" ] 

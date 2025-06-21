@@ -26,50 +26,55 @@ namespace json = boost::json;
 
 BOOST_LOG_ATTRIBUTE_KEYWORD(additional_data, "AdditionalData", json::value)
 
-namespace {
+namespace
+{
     template <typename Fn>
-    void RunWorkers(unsigned n, const Fn& fn) {
+    void RunWorkers(unsigned n, const Fn &fn)
+    {
         n = std::max(1u, n);
         std::vector<std::thread> workers;
         workers.reserve(n - 1);
-        while (--n) {
+        while (--n)
+        {
             workers.emplace_back(fn);
         }
         fn();
-        for (auto& worker : workers) {
+        for (auto &worker : workers)
+        {
             worker.join();
         }
     }
 }
 
-int main(int argc, const char* argv[]) {
-    if (argc != 2) {
-        std::cerr << "Usage: game_server <game-config-json>"sv << std::endl;
+int main(int argc, const char *argv[])
+{
+    if (argc != 3)
+    {
+        std::cerr << "Usage: game_server <game-config-json> <static-files>"sv << std::endl;
         return EXIT_FAILURE;
     }
 
-    try {
+    try
+    {
         http_handler::InitLogging();
 
         model::Game game = json_loader::LoadGame(argv[1]);
 
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
-        
+
         net::signal_set signals(ioc, SIGINT, SIGTERM);
-        signals.async_wait([&ioc](const sys::error_code& ec, int) {
+        signals.async_wait([&ioc](const sys::error_code &ec, int)
+                           {
             if (!ec) {
                 ioc.stop();
-            }
-        });
-        
+            } });
 
         // Статическая папка = директория с исполняемым файлом + /static
-        auto static_root = std::filesystem::current_path() / "static";
+        auto static_root = argv[2];
 
         http_handler::RequestHandler handler{game, static_root};
         http_handler::LoggingRequestHandler logging_handler{handler};
-        
 
         const auto address = net::ip::make_address("0.0.0.0");
         constexpr net::ip::port_type port = 8080;
@@ -79,14 +84,22 @@ int main(int argc, const char* argv[]) {
         start_data["address"] = address.to_string();
         BOOST_LOG_TRIVIAL(info) << logging::add_value(additional_data, start_data) << "server started";
 
-        http_server::ServeHttp(ioc, {address, port}, logging_handler);
+        http_server::ServeHttp(ioc, {address, port},
+                               [&logging_handler](auto &&req, auto &&send, const std::string &ip)
+                               {
+                                   logging_handler(std::forward<decltype(req)>(req),
+                                                   std::forward<decltype(send)>(send),
+                                                   ip);
+                               });
 
-        RunWorkers(num_threads, [&ioc] { ioc.run(); });
+        RunWorkers(num_threads, [&ioc]
+                   { ioc.run(); });
 
         BOOST_LOG_TRIVIAL(info) << logging::add_value(additional_data, json::value{{"code", 0}}) << "server exited";
         return 0;
-
-    } catch (const std::exception& ex) {
+    }
+    catch (const std::exception &ex)
+    {
         json::object error_data;
         error_data["code"] = EXIT_FAILURE;
         error_data["exception"] = ex.what();

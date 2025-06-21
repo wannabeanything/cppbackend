@@ -40,14 +40,15 @@ inline void InitLogging() {
         if (auto ts = logging::extract<boost::posix_time::ptime>("TimeStamp", rec)) {
             obj["timestamp"] = to_iso_extended_string(ts.get());
         }
-        if (auto msg = rec[logging::expressions::smessage]) {
-            obj["message"] = msg.get();
-        }
         if (auto data = rec[additional_data]) {
             obj["data"] = data.get();
         } else {
             obj["data"] = json::object{};
         }
+        if (auto msg = rec[logging::expressions::smessage]) {
+            obj["message"] = msg.get();
+        }
+        
         strm << json::serialize(obj);
     });
 }
