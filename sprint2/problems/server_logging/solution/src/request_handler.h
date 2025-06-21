@@ -34,7 +34,7 @@ inline void InitLogging() {
     initialized = true;
 
     logging::add_common_attributes();
-    logging::add_console_log(std::cout, logging::keywords::format = [](const logging::record_view& rec, logging::formatting_ostream& strm) {
+    logging::add_console_log(std::cout, boost::log::keywords::auto_flush = true, logging::keywords::format = [](const logging::record_view& rec, logging::formatting_ostream& strm) {
         using boost::posix_time::to_iso_extended_string;
         json::object obj;
         if (auto ts = logging::extract<boost::posix_time::ptime>("TimeStamp", rec)) {
@@ -61,7 +61,7 @@ public:
     template <typename Body, typename Allocator, typename Send>
     void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
         using namespace std::literals;
-
+        
         const auto bad_request = [&req](std::string_view text) {
             http::response<http::string_body> res{http::status::bad_request, req.version()};
             res.set(http::field::content_type, "application/json");
