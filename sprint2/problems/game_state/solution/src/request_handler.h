@@ -10,7 +10,9 @@
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/log/attributes.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/json/serializer.hpp>
 
+#include <iomanip>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -91,11 +93,14 @@ namespace http_handler
             {
                 return HandleJoinPlayer(req);
             }
-            if (target == "/api/v1/game/players")
+            if (target.starts_with("/api/v1/game/players"))
             {
                 return HandlePlayersList(req);
             }
-
+            if (target.starts_with("/api/v1/game/state"))
+            {
+                return HandleGameState(req);
+            }
             return MakeError(http::status::bad_request, "badRequest", "Bad request", req);
         }
 
@@ -270,7 +275,7 @@ namespace http_handler
             // создаём сессию (позже можно кэшировать или искать по map)
             auto session = std::make_shared<GameSession>(map);
             Dog *dog = session->AddDog(user_name);
-            Player& player = players_.AddPlayer(session, dog);
+            Player &player = players_.AddPlayer(session, dog);
             // Player &player = players_.AddPlayer(nullptr, dog);
 
             // сохраняем сессию, если нужно
@@ -350,6 +355,98 @@ namespace http_handler
             {
                 res.content_length(json::serialize(response_body).size()); // нужно указать Content-Length, даже если тело не отправляется
             }
+            res.keep_alive(req.keep_alive());
+            return res;
+        }
+        template <typename Req>
+        http::response<http::string_body> HandleGameState(const Req &req) const
+        {
+            using namespace std::literals;
+
+            if (req.method() != http::verb::get && req.method() != http::verb::head)
+            {
+                json::object obj;
+                obj["code"] = "invalidMethod";
+                obj["message"] = "Invalid method";
+                http::response<http::string_body> res{http::status::method_not_allowed, req.version()};
+                res.set(http::field::content_type, "application/json");
+                res.set(http::field::cache_control, "no-cache");
+                res.set(http::field::allow, "GET, HEAD");
+                res.body() = json::serialize(obj);
+                res.content_length(res.body().size());
+                res.keep_alive(req.keep_alive());
+                return res;
+            }
+
+            const auto auth_header = req[http::field::authorization];
+            if (auth_header.empty() || !auth_header.starts_with("Bearer "))
+            {
+                return MakeError(http::status::unauthorized, "invalidToken", "Authorization header is required", req);
+            }
+
+            const std::string token_str = std::string(auth_header.substr(7));
+            if (token_str.size() != 32) {
+                return MakeError(http::status::unauthorized, "invalidToken", "Invalid token length", req);
+            }
+            Token token{token_str};
+            Player *player = players_.FindByToken(token);
+            if (!player)
+            {
+                return MakeError(http::status::unauthorized, "unknownToken", "Player token has not been found", req);
+            }
+
+            //const model::Map::Id map_id = player->GetSession()->GetMap()->GetId();
+
+            json::object players_json;
+
+            for (const auto &p : players_.GetPlayers())
+            {
+
+                if (!p)
+                    continue;
+
+                Dog *dog = p->GetDog();
+                std::string dir = "U";
+                json::array pos{
+                    static_cast<double>(dog->GetPosition().x),
+                    static_cast<double>(dog->GetPosition().y)};
+                json::array speed{
+                    static_cast<double>(dog->GetSpeed().x),
+                    static_cast<double>(dog->GetSpeed().y)};
+                switch (dog->GetDirection())
+                {
+                case Direction::NORTH:
+                    dir = "U";
+                    break;
+                case Direction::SOUTH:
+                    dir = "D";
+                    break;
+                case Direction::WEST:
+                    dir = "L";
+                    break;
+                case Direction::EAST:
+                    dir = "R";
+                    break;
+                }
+
+                players_json[std::to_string(dog->GetId())] = {
+                    {"pos", pos},
+                    {"speed", speed},
+                    {"dir", dir}};
+            }
+
+            json::object res_body;
+            res_body["players"] = players_json;
+
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(1);
+            oss << json::serialize(res_body);
+
+            http::response<http::string_body> res{http::status::ok, req.version()};
+            res.set(http::field::content_type, "application/json");
+            res.set(http::field::cache_control, "no-cache");
+            res.body() = oss.str();
+            res.content_length(res.body().size());
             res.keep_alive(req.keep_alive());
             return res;
         }

@@ -8,32 +8,39 @@
 #include <iomanip>
 #include <memory>
 
-
 struct TokenTag
 {
 };
 // Ник игрока - токен
 using Token = util::Tagged<std::string, TokenTag>;
 
+enum class Direction { NORTH, SOUTH, WEST, EAST };
+
+//Используется для скорости и координат
+struct Vec2D {
+    double x;
+    double y;
+};
+
 class GameSession;
 
-class Dog
-{
+class Dog {
 public:
-    Dog(int id, const std::string &name) : id_(id), appeared_name_(name) {}
+    Dog(int id, const std::string& name, Vec2D pos = {0.0, 0.0})
+        : id_(id), appeared_name_(name), position_(pos), speed_({0.0, 0.0}), direction_(Direction::NORTH) {}
 
-    int GetId() const
-    {
-        return id_;
-    }
-    const std::string &GetName() const
-    {
-        return appeared_name_;
-    }
+    int GetId() const { return id_; }
+    const std::string& GetName() const { return appeared_name_; }
+    const Vec2D& GetPosition() const { return position_; }
+    const Vec2D& GetSpeed() const { return speed_; }
+    Direction GetDirection() const { return direction_; }
 
 private:
     int id_;
     std::string appeared_name_;
+    Vec2D position_;
+    Vec2D speed_;
+    Direction direction_;
 };
 class Player
 {
