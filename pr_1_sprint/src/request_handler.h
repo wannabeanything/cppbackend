@@ -5,6 +5,7 @@
 
 namespace http_handler
 {
+
     namespace beast = boost::beast;
     namespace http = beast::http;
     namespace json = boost::json;
@@ -80,9 +81,49 @@ namespace http_handler
                     json::object map_obj;
                     map_obj["id"] = *map->GetId();
                     map_obj["name"] = map->GetName();
-                    map_obj["roads"] = SerializeRoads(map->GetRoads());
-                    map_obj["buildings"] = SerializeBuildings(map->GetBuildings());
-                    map_obj["offices"] = SerializeOffices(map->GetOffices());
+
+                    json::array roads_arr;
+                    for (const auto &road : map->GetRoads())
+                    {
+                        if (road.IsHorizontal())
+                        {
+                            roads_arr.emplace_back(json::object{
+                                {"x0", road.GetStart().x},
+                                {"y0", road.GetStart().y},
+                                {"x1", road.GetEnd().x}});
+                        }
+                        else
+                        {
+                            roads_arr.emplace_back(json::object{
+                                {"x0", road.GetStart().x},
+                                {"y0", road.GetStart().y},
+                                {"y1", road.GetEnd().y}});
+                        }
+                    }
+                    map_obj["roads"] = std::move(roads_arr);
+
+                    json::array buildings_arr;
+                    for (const auto &building : map->GetBuildings())
+                    {
+                        buildings_arr.emplace_back(json::object{
+                            {"x", building.GetBounds().position.x},
+                            {"y", building.GetBounds().position.y},
+                            {"w", building.GetBounds().size.width},
+                            {"h", building.GetBounds().size.height}});
+                    }
+                    map_obj["buildings"] = std::move(buildings_arr);
+
+                    json::array offices_arr;
+                    for (const auto &office : map->GetOffices())
+                    {
+                        offices_arr.emplace_back(json::object{
+                            {"id", *office.GetId()},
+                            {"x", office.GetPosition().x},
+                            {"y", office.GetPosition().y},
+                            {"offsetX", office.GetOffset().dx},
+                            {"offsetY", office.GetOffset().dy}});
+                    }
+                    map_obj["offices"] = std::move(offices_arr);
 
                     http::response<http::string_body> res{http::status::ok, req.version()};
                     res.set(http::field::content_type, "application/json");
@@ -102,59 +143,6 @@ namespace http_handler
 
     private:
         model::Game &game_;
-
-        json::array SerializeRoads(const std::vector<model::Road> &roads)
-        {
-            json::array result;
-            for (const auto &road : roads)
-            {
-                if (road.IsHorizontal())
-                {
-                    result.emplace_back(json::object{
-                        {"x0", road.GetStart().x},
-                        {"y0", road.GetStart().y},
-                        {"x1", road.GetEnd().x}});
-                }
-                else
-                {
-                    result.emplace_back(json::object{
-                        {"x0", road.GetStart().x},
-                        {"y0", road.GetStart().y},
-                        {"y1", road.GetEnd().y}});
-                }
-            }
-            return result;
-        }
-
-        json::array SerializeBuildings(const std::vector<model::Building> &buildings)
-        {
-            json::array result;
-            for (const auto &building : buildings)
-            {
-                const auto &bounds = building.GetBounds();
-                result.emplace_back(json::object{
-                    {"x", bounds.position.x},
-                    {"y", bounds.position.y},
-                    {"w", bounds.size.width},
-                    {"h", bounds.size.height}});
-            }
-            return result;
-        }
-
-        json::array SerializeOffices(const std::vector<model::Office> &offices)
-        {
-            json::array result;
-            for (const auto &office : offices)
-            {
-                result.emplace_back(json::object{
-                    {"id", *office.GetId()},
-                    {"x", office.GetPosition().x},
-                    {"y", office.GetPosition().y},
-                    {"offsetX", office.GetOffset().dx},
-                    {"offsetY", office.GetOffset().dy}});
-            }
-            return result;
-        }
     };
 
 } // namespace http_handler
