@@ -176,7 +176,6 @@ jobs:
 
       - name: run tests sprint3 flamegraph
         run: |
-          ./cpp-backend-tests-practicum/scripts/sprint1/map_json/build.sh
           cd cpp-backend-tests-practicum/scripts/sprint3
           ./flamegraph/run.sh
 
