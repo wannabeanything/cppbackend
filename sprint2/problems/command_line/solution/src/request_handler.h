@@ -67,9 +67,10 @@ namespace http_handler
     class ApiRequestHandler
     {
         friend RequestHandler;
+
     public:
-        ApiRequestHandler(model::Game &game, boost::asio::strand<boost::asio::io_context::executor_type> &strand)
-            : game_(game), strand_(std::move(strand)) {}
+        ApiRequestHandler(model::Game &game, net::strand<net::io_context::executor_type> &strand, bool randomize_spawn)
+            : game_(game), strand_(std::move(strand)), randomize_spawn_(randomize_spawn) {}
 
         template <typename Body, typename Allocator, typename Send>
         void HandleRequest(const http::request<Body, http::basic_fields<Allocator>> &req, Send &&send)
@@ -134,7 +135,8 @@ namespace http_handler
             }
             if (target.starts_with("/api/v1/game/tick"))
             {
-                if(AutoTick_){
+                if (AutoTick_)
+                {
                     send(MakeError(http::status::bad_request, "badRequest", "Invalid endpoint", req));
                     return;
                 }
@@ -152,6 +154,7 @@ namespace http_handler
         boost::asio::strand<boost::asio::io_context::executor_type> strand_;
         std::unordered_map<std::string, std::shared_ptr<GameSession>> sessions_;
         bool AutoTick_ = false;
+        bool randomize_spawn_ = false;
         template <typename Req>
         http::response<http::string_body> HandleMapsList(const Req &req) const
         {
@@ -338,7 +341,7 @@ namespace http_handler
             {
                 session = it->second;
             }
-            std::shared_ptr<Dog> dog = session->AddDog(user_name);
+            std::shared_ptr<Dog> dog = session->AddDog(user_name, randomize_spawn_);
             // dog->SetSpeed(map->GetSpeedForThisMap());
             Player &player = players_.AddPlayer(session, dog);
             // Player &player = players_.AddPlayer(nullptr, dog);
@@ -672,7 +675,8 @@ namespace http_handler
             res.keep_alive(req.keep_alive());
             return res;
         }
-        void SimultaniousTick(std::chrono::milliseconds ms){
+        void SimultaniousTick(std::chrono::milliseconds ms)
+        {
             AutoTick_ = true;
             int millis = static_cast<int>(ms.count());
             for (const auto &player_ptr : players_.GetPlayers())
@@ -686,8 +690,13 @@ namespace http_handler
     class RequestHandler
     {
     public:
-        RequestHandler(model::Game &game, fs::path static_root, boost::asio::strand<boost::asio::io_context::executor_type> &strand)
-            : game_{game}, static_root_{std::move(static_root)}, api_handler_(game, strand) {}
+        RequestHandler(model::Game &game, fs::path static_root, net::strand<net::io_context::executor_type> &strand, bool randomize_spawn)
+            : game_{game},
+              static_root_{std::move(static_root)},
+              api_handler_(game, strand, randomize_spawn),
+              randomize_spawn_{randomize_spawn}
+        {
+        }
 
         template <typename Body, typename Allocator, typename Send>
         void operator()(http::request<Body, http::basic_fields<Allocator>> &&req, Send &&send)
@@ -780,6 +789,7 @@ namespace http_handler
         model::Game &game_;
         fs::path static_root_;
         ApiRequestHandler api_handler_;
+        bool randomize_spawn_;
         std::string UrlDecode(std::string_view str) const
         {
             std::ostringstream result;

@@ -52,12 +52,7 @@ int main(int argc, const char *argv[])
     namespace po = boost::program_options;
 
     po::options_description desc("Allowed options");
-    desc.add_options()
-    ("help,h", "produce help message")
-    ("tick-period,t", po::value<int>(), "milliseconds set tick period")
-    ("config-file,c", po::value<std::string>(), "file set config file path")
-    ("www-root,w", po::value<std::string>(), "dir set static files root")
-    ("randomize-spawn-points", "spawn dogs at random positions");
+    desc.add_options()("help,h", "produce help message")("tick-period,t", po::value<int>(), "milliseconds set tick period")("config-file,c", po::value<std::string>(), "file set config file path")("www-root,w", po::value<std::string>(), "dir set static files root")("randomize-spawn-points", "spawn dogs at random positions");
 
     po::variables_map vm;
     try
@@ -71,7 +66,8 @@ int main(int argc, const char *argv[])
         return EXIT_FAILURE;
     }
     std::optional<std::chrono::milliseconds> tick_period;
-    if (vm.count("tick-period")) {
+    if (vm.count("tick-period"))
+    {
         tick_period = std::chrono::milliseconds(vm["tick-period"].as<int>());
     }
     if (vm.count("help") || !vm.count("config-file") || !vm.count("www-root"))
@@ -87,7 +83,7 @@ int main(int argc, const char *argv[])
     try
     {
         http_handler::InitLogging();
-        
+
         model::Game game = json_loader::LoadGame(config_file);
 
         const unsigned num_threads = std::thread::hardware_concurrency();
@@ -103,9 +99,20 @@ int main(int argc, const char *argv[])
         // Статическая папка = директория с исполняемым файлом + /static
         auto static_root = www_root;
         net::strand<net::io_context::executor_type> api_strand = net::make_strand(ioc);
-        http_handler::RequestHandler handler{game, static_root, api_strand};
+        http_handler::RequestHandler handler{game, static_root, api_strand, randomize_spawn};
         http_handler::LoggingRequestHandler logging_handler{handler};
-
+        std::shared_ptr<http_handler::Ticker> ticker = nullptr;
+        if (tick_period)
+        {
+            ticker = std::make_shared<http_handler::Ticker>(
+                api_strand,
+                *tick_period,
+                [&handler](std::chrono::milliseconds delta)
+                {
+                    handler.Tick(delta);
+                });
+            ticker->Start();
+        }
         const auto address = net::ip::make_address("0.0.0.0");
         constexpr net::ip::port_type port = 8080;
 
