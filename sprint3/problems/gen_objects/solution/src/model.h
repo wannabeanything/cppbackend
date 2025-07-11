@@ -4,6 +4,7 @@
 #include <vector>
 #include <cmath>
 #include <list>
+#include <optional>
 
 #include "tagged.h"
 #include "loot_generator.h"

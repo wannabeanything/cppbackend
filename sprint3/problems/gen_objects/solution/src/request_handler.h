@@ -79,12 +79,15 @@ namespace http_handler
             using namespace std::literals;
             const std::string target = std::string(req.target());
 
-            // Безопасный: сразу вызываем send
+            
             if (target == "/api/v1/maps")
             {
-                if (req.method() != http::verb::get)
+                if (req.method() != http::verb::get && req.method() != http::verb::head)
                 {
-                    send(MakeError(http::status::bad_request, "badRequest", "Only GET method supported", req));
+                    //send(MakeError(http::status::method_not_allowed, "invalidMethod", "Only GET, HEAD method supported", req));
+                    http::response<http::string_body> res = MakeError(http::status::method_not_allowed, "invalidMethod", "Only GET, HEAD method supported", req);
+                    res.set(http::field::allow, "GET, HEAD");
+                    send(res);
                 }
                 else
                 {
@@ -95,9 +98,11 @@ namespace http_handler
 
             if (target.starts_with("/api/v1/maps/"))
             {
-                if (req.method() != http::verb::get)
+                if (req.method() != http::verb::get && req.method() != http::verb::head)
                 {
-                    send(MakeError(http::status::bad_request, "badRequest", "Only GET method supported", req));
+                    http::response<http::string_body> res = MakeError(http::status::method_not_allowed, "invalidMethod", "Only GET, HEAD method supported", req);
+                    res.set(http::field::allow, "GET, HEAD");
+                    send(res);
                 }
                 else
                 {
@@ -178,6 +183,7 @@ namespace http_handler
         template <typename Req>
         http::response<http::string_body> HandleMapById(const Req &req) const
         {
+            
             std::string map_id = std::string(req.target()).substr(std::string("/api/v1/maps/").size());
             if (auto map = game_.FindMap(model::Map::Id{map_id}))
             {
@@ -690,7 +696,14 @@ namespace http_handler
             std::chrono::milliseconds delta{time_delta_ms};
             for (auto& map: game_.GetMaps()){
                 const model::Map::Id map_id= map.GetId();
-                auto& session = sessions_.at(*map_id);
+                //Реализовать simoltaniousTick
+                //В Generate передается разница во времени между предыдущим Generate и нынешним. Учесть(скорее всего все ок)
+                std::shared_ptr<GameSession> session;
+                try{
+                    session = sessions_.at(*map_id);
+                }catch(...){
+                    continue;
+                }
                 const int current_loot = static_cast<int>(session->GetLostObjects().size());
                 const int dogs_count = static_cast<int>(session->GetDogs().size());
 
@@ -721,6 +734,30 @@ namespace http_handler
             {
                 auto dog = player_ptr->GetDog();
                 dog->UpdatePosition(millis, player_ptr->GetSession()->GetMap());
+            }
+            
+            for (auto& map: game_.GetMaps()){
+                const model::Map::Id map_id= map.GetId();
+                
+                
+                std::shared_ptr<GameSession> session;
+                try{
+                    session = sessions_.at(*map_id);
+                }catch(...){
+                    continue;
+                }
+                const int current_loot = static_cast<int>(session->GetLostObjects().size());
+                const int dogs_count = static_cast<int>(session->GetDogs().size());
+
+                auto *generator = extra_data::GetInstance().GetLootGenerator(map_id);
+                const auto *loot_types = extra_data::GetInstance().GetLootTypes(map_id);
+
+                if (generator && loot_types)
+                {
+                    const int new_loot_count = generator->Generate(ms, current_loot, dogs_count);
+                    session->AddRandomLoot(new_loot_count, session->GetMap()->GetRoads(), static_cast<int>(loot_types->size()));
+                }
+
             }
             
         }
