@@ -314,7 +314,7 @@ namespace http_handler
             {
                 json_body = json::parse(req.body());
             }
-            catch (...)
+            catch (const boost::json::system_error&)
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Join game request parse error", req);
             }
@@ -455,7 +455,13 @@ namespace http_handler
                 return err;
 
             Player *player = *player_opt;
-            auto *session = player->GetSession().get();
+            GameSession* session = nullptr;
+            try{
+                session = player->GetSession().get();
+            }catch(const std::out_of_range&){
+                throw;
+            }
+            
             const auto &lost_objects = session->GetLostObjects();
 
             json::object players_json;
@@ -589,7 +595,7 @@ namespace http_handler
             {
                 json_body = json::parse(req.body());
             }
-            catch (...)
+            catch (const boost::json::system_error&)
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Failed to parse request body", req);
             }
@@ -673,7 +679,7 @@ namespace http_handler
             {
                 json_body = json::parse(req.body());
             }
-            catch (...)
+            catch (const boost::json::system_error&)
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Failed to parse tick request JSON", req);
             }
@@ -711,7 +717,7 @@ namespace http_handler
                 {
                     session = sessions_.at(*map_id);
                 }
-                catch (...)
+                catch (const std::out_of_range&)
                 {
                     continue;
                 }
@@ -755,7 +761,7 @@ namespace http_handler
                 {
                     session = sessions_.at(*map_id);
                 }
-                catch (...)
+                catch (const std::out_of_range&)
                 {
                     continue;
                 }

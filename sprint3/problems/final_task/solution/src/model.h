@@ -53,12 +53,12 @@ namespace model
     {
         struct HorizontalTag
         {
-            HorizontalTag() = default;
+            explicit HorizontalTag() = default;
         };
 
         struct VerticalTag
         {
-            VerticalTag() = default;
+            explicit VerticalTag() = default;
         };
 
     public:
