@@ -508,7 +508,10 @@ namespace http_handler
                     {"pos", pos},
                     {"speed", speed},
                     {"dir", dir},
-                    {"bag", bag_json}};
+                    {"bag", bag_json},
+                    {"score", dog->GetScore()}
+                };
+                
             }
 
             json::object res_body;
@@ -730,7 +733,7 @@ namespace http_handler
                 if (generator && loot_types)
                 {
                     const int new_loot_count = generator->Generate(delta, current_loot, dogs_count);
-                    session->AddRandomLoot(new_loot_count, session->GetMap()->GetRoads(), static_cast<int>(loot_types->size()));
+                    session->AddRandomLoot(new_loot_count, session->GetMap()->GetRoads(), static_cast<int>(loot_types->size()), *loot_types);
                 }
             }
 
@@ -774,7 +777,7 @@ namespace http_handler
                 if (generator && loot_types)
                 {
                     const int new_loot_count = generator->Generate(ms, current_loot, dogs_count);
-                    session->AddRandomLoot(new_loot_count, session->GetMap()->GetRoads(), static_cast<int>(loot_types->size()));
+                    session->AddRandomLoot(new_loot_count, session->GetMap()->GetRoads(), static_cast<int>(loot_types->size()), *loot_types);
                 }
             }
         }
