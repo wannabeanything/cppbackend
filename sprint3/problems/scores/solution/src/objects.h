@@ -11,7 +11,6 @@
 #include <chrono>
 #include <cmath>
 #include <set>
-#include <boost/json.hpp>
 
 struct TokenTag {};
 using Token = util::Tagged<std::string, TokenTag>;
@@ -75,12 +74,10 @@ public:
     void SetBagCapacityForDog(int size) { bag_capacity_ = size; }
     bool CanPickUp() const { return inventory_.size() < bag_capacity_; }
 
-    void PickUpItem(int id, int type, int value) {
+    void PickUpItem(int id, int type) {
         if (CanPickUp()) {
             inventory_.emplace_back(id, type);
-            RaiseScore(value);
         }
-        
     }
     const std::vector<std::pair<int, int>> GetBag() const{
         return inventory_;
@@ -90,9 +87,7 @@ public:
     }
 
     void UpdatePosition(int ms, GameSession* session);
-    const int GetScore()const{
-        return score_;
-    }
+
 private:
     int id_;
     std::string appeared_name_;
@@ -101,12 +96,6 @@ private:
     Direction direction_;
     int bag_capacity_;
     std::vector<std::pair<int, int>> inventory_;
-    int score_ = 0;
-
-
-    void RaiseScore(int value){
-        score_+=value;
-    }
 };
 
 class GameSession {
@@ -131,17 +120,15 @@ public:
     struct LostObject {
         int id;
         int type;
-        int value = 0;
         model::Position pos;
     };
 
-    void AddRandomLoot(int count, const std::list<model::Road>& roads, int loot_type_count, const boost::json::array& loot_types) {
+    void AddRandomLoot(int count, const std::list<model::Road>& roads, int loot_type_count) {
         for (int i = 0; i < count; ++i) {
             LostObject obj;
             obj.id = next_loot_id_++;
             obj.type = rand() % loot_type_count;
             obj.pos = GetRandomPositionOnRoad(*map_);
-            obj.value = loot_types[obj.type].as_object().at("value").as_int64();
             lost_objects_[obj.id] = obj;
         }
     }
@@ -218,7 +205,7 @@ inline void Dog::UpdatePosition(int ms, GameSession* session) {
         auto it = session->AccessLostObjects().begin();
         std::advance(it, evt.item_id);
         if (CanPickUp()) {
-            PickUpItem(it->second.id, it->second.type, it->second.value);
+            PickUpItem(it->second.id, it->second.type);
             picked_items.insert(it->second.id);
         }
     }
