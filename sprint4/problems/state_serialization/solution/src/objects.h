@@ -301,8 +301,8 @@ public:
         players_.emplace_back(std::make_unique<Player>(std::move(session), std::move(dog)));
         return *players_.back();
     }
-    Player& AddPlayer(std::shared_ptr<GameSession> session, std::shared_ptr<Dog> dog, Token token) {
-        players_.emplace_back(std::make_unique<Player>(std::move(session), std::move(dog), std::move(token)));
+    Player& AddPlayer(std::unique_ptr<Player> player) {
+        players_.emplace_back(std::move(player));
         return *players_.back();
     }
     Player* FindByDogIdAndMapId(int dog_id, const model::Map::Id map_id) const {

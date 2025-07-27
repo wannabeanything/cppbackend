@@ -82,7 +82,9 @@ namespace http_handler
         strand_(strand),
         randomize_spawn_(randomize_spawn),
         state_file_path_(std::move(state_file_path)),
-        save_period_(save_period) {}
+        save_period_(save_period) {
+	    LoadState();
+	}
 
         template <typename Body, typename Allocator, typename Send>
         void HandleRequest(const http::request<Body, http::basic_fields<Allocator>> &req, Send &&send)
@@ -223,7 +225,9 @@ namespace http_handler
                         BOOST_LOG_TRIVIAL(error) << "Session not found for player during restore";
                         return false;
                     }
-                    players_.AddPlayer(it->second, player_repr.GetDog(it->second), player_repr.GetToken());
+
+                    std::unique_ptr<Player> player = player_repr.Restore(it->second);
+                    players_.AddPlayer(std::move(player));
                 }
 
                 BOOST_LOG_TRIVIAL(info) << "Game state restored from: " << state_file_path_->string();
