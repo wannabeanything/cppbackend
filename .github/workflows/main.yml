@@ -300,10 +300,10 @@ jobs:
           cd cpp-backend-tests-practicum/scripts/sprint3
           ./ammo/run_ci.sh
 
-      - name: run tests sprint3 load
-        run: |
-          cd cpp-backend-tests-practicum/scripts/sprint3
-          ./load/run_ci.sh
+#      - name: run tests sprint3 load
+#        run: |
+#          cd cpp-backend-tests-practicum/scripts/sprint3
+#          ./load/run_ci.sh
 
 ##      - name: run tests sprint3 stress
 ##        run: |

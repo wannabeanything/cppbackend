@@ -1,7 +1,49 @@
 #include "use_cases_impl.h"
 #include <tuple>
+#include <set>
 #include "../domain/author.h"
 #include "../domain/book.h"
+
+
+namespace {
+
+std::vector<std::string> NormalizeTags(const std::vector<std::string>& raw_tags) {
+    std::set<std::string> unique_tags;
+    for (auto tag : raw_tags) {
+        // Удаляем начальные и конечные пробелы
+        tag.erase(tag.begin(), std::find_if(tag.begin(), tag.end(), [](unsigned char ch) {
+            return !std::isspace(ch);
+        }));
+        tag.erase(std::find_if(tag.rbegin(), tag.rend(), [](unsigned char ch) {
+            return !std::isspace(ch);
+        }).base(), tag.end());
+
+        // Сжимаем множественные пробелы внутри тега
+        std::string normalized;
+        bool was_space = false;
+        for (char ch : tag) {
+            if (std::isspace(ch)) {
+                if (!was_space) {
+                    normalized += ' ';
+                    was_space = true;
+                }
+            } else {
+                normalized += ch;
+                was_space = false;
+            }
+        }
+
+        if (!normalized.empty() && normalized.size() <= 30) {
+            unique_tags.insert(normalized);
+        }
+    }
+
+    return {unique_tags.begin(), unique_tags.end()};
+}
+
+} 
+
+
 namespace app {
 using namespace domain;
 
@@ -21,13 +63,20 @@ std::vector<ui::detail::AuthorInfo> UseCasesImpl::GetAuthors() const {
 }
 void UseCasesImpl::AddBook(std::string title, std::string author_id, int publication_year,
                            std::vector<std::string> tags) {
-    const auto book_id = domain::BookId::New();
-    books_.Save({book_id, domain::AuthorId::FromString(author_id), std::move(title), publication_year});
+    auto author_uuid = domain::AuthorId::FromString(author_id);
+    if (!authors_.FindById(author_uuid).has_value()) {
+        throw std::runtime_error("Author not found");
+    }
 
-    for (const auto& tag : tags) {
+    const auto book_id = domain::BookId::New();
+    books_.Save({book_id, author_uuid, std::move(title), publication_year});
+
+    auto cleaned_tags = NormalizeTags(tags);
+    for (const auto& tag : cleaned_tags) {
         book_tags_.Save({book_id, tag});
     }
 }
+
 
 
 std::vector<ui::detail::BookInfo> UseCasesImpl::GetBooks() const {
@@ -101,9 +150,14 @@ bool UseCasesImpl::DeleteBook(const domain::BookId& id) {
     return books_.DeleteBook(id);
 }
 
-bool UseCasesImpl::EditBook(const domain::BookId& id, const std::string& title, int year, const std::vector<std::string>& tags) {
-    return books_.EditBook(id, title, year, tags);
+bool UseCasesImpl::EditBook(const domain::BookId& id,
+                            const std::string& title,
+                            int year,
+                            const std::vector<std::string>& tags) {
+    auto cleaned_tags = NormalizeTags(tags);
+    return books_.EditBook(id, title, year, cleaned_tags);
 }
+
 
 std::vector<std::string> UseCasesImpl::GetBookTags(const domain::BookId& id) const {
     return book_tags_.GetTags(id);

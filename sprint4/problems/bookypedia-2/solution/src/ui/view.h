@@ -44,12 +44,13 @@ private:
     bool AddAuthor(std::istream& cmd_input) const;
     bool AddBook(std::istream& cmd_input) const;
     bool ShowAuthors() const;
+    bool ShowBook(std::istream& cmd_input) const;
     bool ShowBooks() const;
     bool ShowAuthorBooks() const;
     bool DeleteAuthor(std::istream& cmd_input) const;
     bool EditAuthor(std::istream& cmd_input) const;
-    bool DeleteBook() const;
-    bool EditBook() const;
+    bool DeleteBook(std::istream& cmd_input) const;
+    bool EditBook(std::istream& cmd_input) const;
     std::optional<detail::AddBookParams> GetBookParams(std::istream& cmd_input) const;
     std::optional<std::string> SelectAuthor() const;
     std::vector<detail::AuthorInfo> GetAuthors() const;
