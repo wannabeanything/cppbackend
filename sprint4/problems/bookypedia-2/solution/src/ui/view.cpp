@@ -447,14 +447,16 @@ bool View::EditBook(std::istream& cmd_input) const {
             return true;
         }
 
-        // ✅ ВСЕГДА выводим список и спрашиваем номер
+        
         PrintVector(output_, candidates);
         output_ << "Enter the book # or empty line to cancel:"sv << std::endl;
         std::string input;
         std::getline(input_, input);
         boost::algorithm::trim(input);
-        if (input.empty()) return true;
-
+        if (input.empty()){
+            output_ << "Book not found"sv << std::endl;
+            return true;
+        }
         std::istringstream iss(input);
         int index;
         if (!(iss >> index) || index < 1 || index > static_cast<int>(candidates.size())) {
