@@ -18,6 +18,7 @@ public:
     bool DeleteByName(const std::string& name) override;
     bool UpdateName(domain::AuthorId id, const std::string& new_name) override;
     std::optional<domain::AuthorId> FindIdByName(const std::string& name) const override;
+    std::optional<domain::Author> FindById(domain::AuthorId id) const override;
 private:
     pqxx::connection& connection_;
 };
@@ -26,9 +27,15 @@ public:
     explicit BookRepositoryImpl(pqxx::connection& connection) : connection_{connection} {}
 
     void Save(const domain::Book& book) override;
+    void Delete(domain::BookId id) override;
     std::vector<domain::Book> GetAll() const override;
     std::vector<domain::Book> GetByAuthor(domain::AuthorId author_id) const override;
     std::vector<domain::BookWithAuthor> GetAllWithAuthors() const override;
+    std::vector<domain::BookWithAuthor> FindBooksByTitle(const std::string& title) const override;
+    bool DeleteBook(const domain::BookId& id) override;
+    bool EditBook(const domain::BookId& id, const std::string& title, int year,
+                const std::vector<std::string>& tags) override;
+    std::vector<std::string> GetBookTags(const domain::BookId& id) const override;
 private:
     pqxx::connection& connection_;
 };

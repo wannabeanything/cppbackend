@@ -40,6 +40,8 @@ public:
     virtual bool DeleteByName(const std::string& name) = 0;
     virtual bool UpdateName(AuthorId id, const std::string& new_name) = 0;
     virtual std::optional<AuthorId> FindIdByName(const std::string& name) const = 0;
+    virtual std::optional<Author> FindById(AuthorId id) const = 0;
+
 
 protected:
     ~AuthorRepository() = default;

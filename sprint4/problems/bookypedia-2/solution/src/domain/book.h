@@ -38,9 +38,19 @@ struct BookWithAuthor {
 class BookRepository {
 public:
     virtual void Save(const Book& book) = 0;
+    virtual void Delete(BookId id) = 0;
     virtual std::vector<Book> GetAll() const = 0;
     virtual std::vector<Book> GetByAuthor(AuthorId author_id) const = 0;
     virtual std::vector<BookWithAuthor> GetAllWithAuthors() const = 0;
+    virtual std::vector<domain::BookWithAuthor> FindBooksByTitle(const std::string& title) const = 0;
+
+    virtual bool DeleteBook(const domain::BookId& id) = 0;
+
+    virtual bool EditBook(const domain::BookId& id, const std::string& title, int year,
+                        const std::vector<std::string>& tags) = 0;
+
+    virtual std::vector<std::string> GetBookTags(const domain::BookId& id) const = 0;
+
 protected:
     ~BookRepository() = default;
 };
