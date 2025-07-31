@@ -164,9 +164,11 @@ namespace http_handler
                 }
                 boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
                                       { send(HandleGameTick(req)); });
+                //boost::asio::dispatch(strand_, [this]() mutable
+                  //                    { DeleteRetiredPlayers(); });
                 return;
             }
-            if (req.target() == "/api/v1/game/records"sv)
+            if (target.starts_with("/api/v1/game/records"))
             {
                 boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
                                       { send(HandleGameRecords(req)); });
@@ -276,6 +278,7 @@ namespace http_handler
         std::optional<std::chrono::milliseconds> save_period_;
         std::atomic<int> accumulated_time_ms_ = 0;
         std::shared_ptr<database::RecordRepository> record_repo_;
+        std::vector<Token> retired_tokens_;
         template <typename Req>
         http::response<http::string_body> HandleMapsList(const Req &req) const
         {
@@ -738,31 +741,35 @@ namespace http_handler
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Dog not found", req);
             }
-
-            // Устанавливаем направление
-            if (dir == "U")
+            const double speed = player->GetSession()->GetMap()->GetSpeedForThisMap();
+            if (dir.empty())
+            {
+                dog->SetSpeed(0.0);
+            }
+            else if (dir == "U")
             {
                 dog->SetDirection(Direction::NORTH);
+                dog->SetSpeed(speed);
             }
             else if (dir == "D")
             {
                 dog->SetDirection(Direction::SOUTH);
+                dog->SetSpeed(speed);
             }
             else if (dir == "L")
             {
                 dog->SetDirection(Direction::WEST);
+                dog->SetSpeed(speed);
             }
             else if (dir == "R")
             {
                 dog->SetDirection(Direction::EAST);
+                dog->SetSpeed(speed);
             }
             else
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Invalid direction", req);
             }
-            const double speed = player->GetSession()->GetMap()->GetSpeedForThisMap();
-            dog->SetSpeed(speed);
-
             http::response<http::string_body> res{http::status::ok, req.version()};
             res.set(http::field::content_type, "application/json");
             res.set(http::field::cache_control, "no-cache");
@@ -771,9 +778,17 @@ namespace http_handler
             res.keep_alive(req.keep_alive());
             return res;
         }
+        void DeleteRetiredPlayers()
+        {
+            for (const auto &token : retired_tokens_)
+            {
+                players_.RemoveByToken(token);
+            }
+        }
         template <typename Req>
         http::response<http::string_body> HandleGameTick(const Req &req)
         {
+
             using namespace std::literals;
 
             if (req.method() != http::verb::post)
@@ -802,44 +817,67 @@ namespace http_handler
             }
 
             const auto &obj = json_body.as_object();
-            if (!obj.contains("timeDelta") || !obj.at("timeDelta").is_int64())
+            if (!obj.contains("timeDelta"))
             {
-                return MakeError(http::status::bad_request, "invalidArgument", "Missing or invalid 'timeDelta' field", req);
+                return MakeError(http::status::bad_request, "invalidArgument", "Missing 'timeDelta' field", req);
             }
 
-            int64_t time_delta_ms = obj.at("timeDelta").as_int64();
+            int64_t time_delta_ms;
+
+            const auto &delta_val = obj.at("timeDelta");
+            if (delta_val.is_int64())
+            {
+                time_delta_ms = delta_val.as_int64();
+            }
+            else if (delta_val.is_double())
+            {
+                double double_val = delta_val.as_double();
+                if (double_val < 0 || !std::isfinite(double_val))
+                {
+                    return MakeError(http::status::bad_request, "invalidArgument", "'timeDelta' must be a non-negative finite number", req);
+                }
+                time_delta_ms = static_cast<int64_t>(double_val);
+            }
+            else
+            {
+                return MakeError(http::status::bad_request, "invalidArgument", "'timeDelta' must be a number", req);
+            }
+
             if (time_delta_ms < 0)
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "timeDelta must be non-negative", req);
             }
-            std::vector<Token> retired_tokens;
+
             for (const auto &player_ptr : players_.GetPlayers())
             {
                 auto dog = player_ptr->GetDog();
                 dog->UpdatePosition(time_delta_ms, player_ptr->GetSession().get());
-                if (dog->IsRetired() && !dog->WasRecorded())
+
+                if (dog->IsRetired())
                 {
-                    dog->MarkRecorded();
+                    if (!dog->WasRecorded())
+                    {
+                        record_repo_->SaveRecord(
+                            dog->GetName(),
+                            dog->GetScore(),
+                            dog->GetLifeTime());
+                        dog->MarkRecorded();
+                    }
 
-                    record_repo_->SaveRecord(
-                        dog->GetName(),
-                        dog->GetScore(),
-                        dog->GetLifeTime());
+                    Token token = player_ptr->GetToken().value();
+                    retired_tokens_.push_back(token);
                 }
-                Token token = player_ptr->GetToken().value();
-                retired_tokens.push_back(token);
             }
-
+            /*
             for (const Token &token : retired_tokens)
             {
                 players_.RemoveByToken(token);
-            }
+            }*/
             std::chrono::milliseconds delta{time_delta_ms};
             for (auto &map : game_.GetMaps())
             {
                 const model::Map::Id map_id = map.GetId();
-                // Реализовать simoltaniousTick
-                // В Generate передается разница во времени между предыдущим Generate и нынешним. Учесть(скорее всего все ок)
+
                 std::shared_ptr<GameSession> session;
                 try
                 {
@@ -868,6 +906,12 @@ namespace http_handler
             res.body() = "{}";
             res.content_length(res.body().size());
             res.keep_alive(req.keep_alive());
+            /*
+            for (const Token &token : retired_tokens_)
+            {
+                players_.RemoveByToken(token);
+            }*/
+           DeleteRetiredPlayers();
             if (save_period_ && state_file_path_)
             {
                 int prev = accumulated_time_ms_.fetch_add(delta.count()) + delta.count();
@@ -888,22 +932,28 @@ namespace http_handler
             {
                 auto dog = player_ptr->GetDog();
                 dog->UpdatePosition(millis, player_ptr->GetSession().get());
-                if (dog->IsRetired() && !dog->WasRecorded())
-                {
-                    dog->MarkRecorded();
 
-                    record_repo_->SaveRecord(
-                        dog->GetName(),
-                        dog->GetScore(),
-                        dog->GetLifeTime());
+                if (dog->IsRetired())
+                {
+                    if (!dog->WasRecorded())
+                    {
+
+                        record_repo_->SaveRecord(
+                            dog->GetName(),
+                            dog->GetScore(),
+                            dog->GetLifeTime());
+                        dog->MarkRecorded();
+                    }
+
                     Token token = player_ptr->GetToken().value();
                     retired_tokens.push_back(token);
                 }
             }
+            /*
             for (const Token &token : retired_tokens)
             {
                 players_.RemoveByToken(token);
-            }
+            }*/
 
             for (auto &map : game_.GetMaps())
             {
@@ -929,6 +979,10 @@ namespace http_handler
                     const int new_loot_count = generator->Generate(ms, current_loot, dogs_count);
                     session->AddRandomLoot(new_loot_count, session->GetMap()->GetRoads(), static_cast<int>(loot_types->size()), *loot_types);
                 }
+            }
+            for (const Token &token : retired_tokens)
+            {
+                players_.RemoveByToken(token);
             }
             if (save_period_ && state_file_path_)
             {

@@ -139,15 +139,12 @@ namespace json_loader
         // Если в корне есть defaultBagCapacity, переопределим его
         if (root.contains("dogRetirementTime"))
         {
-            default_time = static_cast<int>(root.at("dogRetirementTime").as_double());
+            default_time = root.at("dogRetirementTime").as_double(); // не касти к int
         }
-
-        
-        
 
         map.SetRetirementTime(default_time);
     }
-    
+
     model::Game LoadGame(const std::filesystem::path &path)
     {
         std::ifstream input(path);

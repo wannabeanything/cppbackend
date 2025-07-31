@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-
+#include <mutex>
 #include "connection_pool.h"
 
 namespace database {
@@ -25,7 +25,9 @@ private:
     void EnsureTableExists();
 
     std::shared_ptr<ConnectionPool> pool_;
-    bool initialized_ = false;
+
+    mutable std::once_flag init_flag_;
+    mutable bool initialized_ = false;
 };
 
 }  // namespace database
