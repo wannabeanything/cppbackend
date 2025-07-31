@@ -127,32 +127,27 @@ namespace http_handler
                 return;
             }
 
-            // Потенциально изменяет состояние — оборачиваем в strand
             if (target.starts_with("/api/v1/game/join"))
             {
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleJoinPlayer(req)); });
+                send(HandleJoinPlayer(req));
                 return;
             }
 
             if (target.starts_with("/api/v1/game/players"))
             {
-                boost::asio::post(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                  { send(HandlePlayersList(req)); });
+                send(HandlePlayersList(req));
                 return;
             }
 
             if (target.starts_with("/api/v1/game/state"))
             {
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleGameState(req)); });
+                send(HandleGameState(req));
                 return;
             }
 
             if (target.starts_with("/api/v1/game/player/action"))
             {
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleGameActions(req)); });
+                send(HandleGameActions(req));
                 return;
             }
             if (target.starts_with("/api/v1/game/tick"))
@@ -162,16 +157,12 @@ namespace http_handler
                     send(MakeError(http::status::bad_request, "badRequest", "Invalid endpoint", req));
                     return;
                 }
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleGameTick(req)); });
-                //boost::asio::dispatch(strand_, [this]() mutable
-                  //                    { DeleteRetiredPlayers(); });
+                send(HandleGameTick(req));
                 return;
             }
             if (target.starts_with("/api/v1/game/records"))
             {
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleGameRecords(req)); });
+                send(HandleGameRecords(req));
                 return;
             }
             // Всё остальное — ошибка
@@ -1082,8 +1073,8 @@ namespace http_handler
             : game_{game},
               static_root_{std::move(static_root)},
               api_handler_(game, strand, randomize_spawn, state_file_path, save_period, std::move(record_repo)),
-              randomize_spawn_{randomize_spawn} {}
-
+              randomize_spawn_{randomize_spawn},
+              strand_(strand) {}
         template <typename Body, typename Allocator, typename Send>
         void operator()(http::request<Body, http::basic_fields<Allocator>> &&req, Send &&send)
         {
@@ -1128,10 +1119,11 @@ namespace http_handler
 
             if (target.starts_with("/api/"))
             {
-                api_handler_.HandleRequest(req, std::forward<Send>(send));
+                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
+                                      { api_handler_.HandleRequest(req, std::forward<Send>(send)); });
+                
                 return;
             }
-
             // Статика
             std::string path = UrlDecode(req.target());
             fs::path full_path = static_root_ / path.substr(1);
@@ -1180,7 +1172,8 @@ namespace http_handler
         fs::path static_root_;
         ApiRequestHandler api_handler_;
         bool randomize_spawn_;
-        std::string UrlDecode(std::string_view str) const
+        net::strand<net::io_context::executor_type> strand_;
+	std::string UrlDecode(std::string_view str) const
         {
             std::ostringstream result;
             for (size_t i = 0; i < str.size(); ++i)

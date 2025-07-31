@@ -107,7 +107,7 @@ int main(int argc, const char *argv[])
         }
 
         auto db_pool = std::make_shared<ConnectionPool>(
-            std::thread::hardware_concurrency(),
+            4,
             [db_url]
             {
                 return std::make_shared<pqxx::connection>(db_url);

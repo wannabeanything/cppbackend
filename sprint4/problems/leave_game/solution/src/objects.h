@@ -149,27 +149,27 @@ public:
     }
     void AddIdleTime(double value)
     {
+        if (retired_)
+            return;
+
         current_idle_time_ += value;
+        AddLifeTime(value); // независимо от результата, всегда прибавляем всё
+
         if (current_idle_time_ >= retirement_timeout_)
         {
             RetireDog();
         }
+    }
+    void ResetIdleTime()
+    {
+        current_idle_time_ = 0.0;
     }
     void AddLifeTime(double dt)
     {
         if (retired_)
             return;
 
-        double time_left = retirement_timeout_ - current_idle_time_;
-
-        if (dt > time_left)
-        {
-            life_time_ += time_left;
-        }
-        else
-        {
-            life_time_ += dt;
-        }
+        life_time_ += dt;
     }
     double GetLifeTime() const
     {
@@ -325,7 +325,6 @@ inline void Dog::UpdatePosition(int ms, GameSession *session)
     // Если собака стоит
     if (speed_.x == 0 && speed_.y == 0)
     {
-        AddLifeTime(dt); // прибавляем всё время
         AddIdleTime(dt); // всё это время — бездействие
         return;
     }
@@ -345,9 +344,8 @@ inline void Dog::UpdatePosition(int ms, GameSession *session)
     {
         active_time = distance_moved / speed_magnitude;
     }
-
-    AddLifeTime(dt);                              // всё время тика — жизнь
-    AddIdleTime(std::max(0.0, dt - active_time)); // только пассивная часть идёт в idle
+    ResetIdleTime();
+    AddLifeTime(dt);
 
     position_ = new_pos;
 
