@@ -115,9 +115,8 @@ int main(int argc, const char *argv[])
 
         auto record_repo = std::make_shared<database::RecordRepository>(db_pool);
 
-        const unsigned num_threads = std::thread::hardware_concurrency();
-        //const unsigned num_threads = 4;
-        //const unsigned num_threads = 1;
+        //const unsigned num_threads = std::thread::hardware_concurrency();
+        const unsigned num_threads = 1;
         
         net::io_context ioc(num_threads);
 
