@@ -77,21 +77,29 @@ public:
 
     void SetSpeed(double value)
     {
-        switch (direction_)
+        if (value == 0.0)
         {
-        case Direction::NORTH:
-            speed_ = {0.0, -value};
-            break;
-        case Direction::SOUTH:
-            speed_ = {0.0, value};
-            break;
-        case Direction::WEST:
-            speed_ = {-value, 0.0};
-            break;
-        case Direction::EAST:
-            speed_ = {value, 0.0};
-            break;
+            speed_ = {0.0, 0.0};
         }
+        else
+        {
+            switch (direction_)
+            {
+            case Direction::NORTH:
+                speed_ = {0.0, -value};
+                break;
+            case Direction::SOUTH:
+                speed_ = {0.0, value};
+                break;
+            case Direction::WEST:
+                speed_ = {-value, 0.0};
+                break;
+            case Direction::EAST:
+                speed_ = {value, 0.0};
+                break;
+            }
+        }
+        current_idle_time_ = 0.0;
     }
 
     void SetBagCapacityForDog(int size) { bag_capacity_ = size; }
@@ -141,18 +149,27 @@ public:
     }
     void AddIdleTime(double value)
     {
+        if (retired_)
+            return;
+
         current_idle_time_ += value;
+        AddLifeTime(value); // независимо от результата, всегда прибавляем всё
+
         if (current_idle_time_ >= retirement_timeout_)
         {
             RetireDog();
         }
     }
+    void ResetIdleTime()
+    {
+        current_idle_time_ = 0.0;
+    }
     void AddLifeTime(double dt)
     {
-        if (!retired_)
-        {
-            life_time_ += dt;
-        }
+        if (retired_)
+            return;
+
+        life_time_ += dt;
     }
     double GetLifeTime() const
     {
@@ -302,12 +319,17 @@ inline void Dog::UpdatePosition(int ms, GameSession *session)
 {
     const double dt = std::chrono::duration<double>(std::chrono::milliseconds(ms)).count();
 
+    if (retired_)
+        return;
+
+    // Если собака стоит
     if (speed_.x == 0 && speed_.y == 0)
     {
-        AddIdleTime(dt);
+        AddIdleTime(dt); // всё это время — бездействие
         return;
     }
 
+    // Попытка движения
     model::Position start = position_;
     model::Position attempted = {position_.x + speed_.x * dt, position_.y + speed_.y * dt};
     model::Position new_pos = session->GetMap()->FitPositionToRoad(position_, attempted);
@@ -317,24 +339,17 @@ inline void Dog::UpdatePosition(int ms, GameSession *session)
     const double distance_moved = std::sqrt(dx * dx + dy * dy);
     const double speed_magnitude = std::sqrt(speed_.x * speed_.x + speed_.y * speed_.y);
 
+    double active_time = 0.0;
     if (distance_moved > 0.0 && speed_magnitude > 0.0)
     {
-        const double active_time = distance_moved / speed_magnitude;
-        const double idle_time = std::max(0.0, dt - active_time);
-        AddIdleTime(idle_time);
+        active_time = distance_moved / speed_magnitude;
     }
-    else
-    {
-        AddIdleTime(dt);
-    }
+    ResetIdleTime();
+    AddLifeTime(dt);
 
     position_ = new_pos;
 
-    if (distance_moved == speed_magnitude * dt)
-    {
-        current_idle_time_ = 0.0;
-    }
-
+    // коллизии с трофеями
     std::vector<model::Position> starts = {start};
     std::vector<model::Position> ends = {position_};
     auto provider = session->GetGathererProvider(starts, ends);
@@ -359,7 +374,7 @@ inline void Dog::UpdatePosition(int ms, GameSession *session)
         session->AccessLostObjects().erase(id);
     }
 
-    // проверка офиса
+    // офис — сдача предметов
     for (const auto &office : session->GetMap()->GetOffices())
     {
         const auto &pos = office.GetPosition();
@@ -371,7 +386,6 @@ inline void Dog::UpdatePosition(int ms, GameSession *session)
             break;
         }
     }
-    AddLifeTime(dt);
 }
 
 class Player
@@ -463,7 +477,21 @@ public:
             std::remove_if(players_.begin(), players_.end(),
                            [&](const std::unique_ptr<Player> &p)
                            {
-                               return p->GetToken().has_value() && p->GetToken().value() == token;
+                               if (p->GetToken().has_value() && p->GetToken().value() == token)
+                               {
+                                   auto session = p->GetSession();
+                                   auto dog = p->GetDog();
+                                   if (session)
+                                   {
+                                       auto &dogs = session->AccessDogs();
+                                       dogs.erase(std::remove_if(dogs.begin(), dogs.end(),
+                                                                 [&](auto &d)
+                                                                 { return d.get() == dog.get(); }),
+                                                  dogs.end());
+                                   }
+                                   return true;
+                               }
+                               return false;
                            }),
             players_.end());
     }

@@ -107,7 +107,7 @@ int main(int argc, const char *argv[])
         }
 
         auto db_pool = std::make_shared<ConnectionPool>(
-            std::thread::hardware_concurrency(),
+            4,
             [db_url]
             {
                 return std::make_shared<pqxx::connection>(db_url);
@@ -115,7 +115,10 @@ int main(int argc, const char *argv[])
 
         auto record_repo = std::make_shared<database::RecordRepository>(db_pool);
 
-        const unsigned num_threads = std::thread::hardware_concurrency();
+        //const unsigned num_threads = std::thread::hardware_concurrency();
+        //const unsigned num_threads = 4;
+        const unsigned num_threads = 1;
+        
         net::io_context ioc(num_threads);
 
         net::signal_set signals(ioc, SIGINT, SIGTERM);

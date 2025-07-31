@@ -127,32 +127,27 @@ namespace http_handler
                 return;
             }
 
-            // Потенциально изменяет состояние — оборачиваем в strand
             if (target.starts_with("/api/v1/game/join"))
             {
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleJoinPlayer(req)); });
+                send(HandleJoinPlayer(req));
                 return;
             }
 
             if (target.starts_with("/api/v1/game/players"))
             {
-                boost::asio::post(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                  { send(HandlePlayersList(req)); });
+                send(HandlePlayersList(req));
                 return;
             }
 
             if (target.starts_with("/api/v1/game/state"))
             {
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleGameState(req)); });
+                send(HandleGameState(req));
                 return;
             }
 
             if (target.starts_with("/api/v1/game/player/action"))
             {
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleGameActions(req)); });
+                send(HandleGameActions(req));
                 return;
             }
             if (target.starts_with("/api/v1/game/tick"))
@@ -162,14 +157,12 @@ namespace http_handler
                     send(MakeError(http::status::bad_request, "badRequest", "Invalid endpoint", req));
                     return;
                 }
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleGameTick(req)); });
+                send(HandleGameTick(req));
                 return;
             }
-            if (req.target() == "/api/v1/game/records"sv)
+            if (target.starts_with("/api/v1/game/records"))
             {
-                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
-                                      { send(HandleGameRecords(req)); });
+                send(HandleGameRecords(req));
                 return;
             }
             // Всё остальное — ошибка
@@ -276,6 +269,7 @@ namespace http_handler
         std::optional<std::chrono::milliseconds> save_period_;
         std::atomic<int> accumulated_time_ms_ = 0;
         std::shared_ptr<database::RecordRepository> record_repo_;
+        std::vector<Token> retired_tokens_;
         template <typename Req>
         http::response<http::string_body> HandleMapsList(const Req &req) const
         {
@@ -738,31 +732,35 @@ namespace http_handler
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Dog not found", req);
             }
-
-            // Устанавливаем направление
-            if (dir == "U")
+            const double speed = player->GetSession()->GetMap()->GetSpeedForThisMap();
+            if (dir.empty())
+            {
+                dog->SetSpeed(0.0);
+            }
+            else if (dir == "U")
             {
                 dog->SetDirection(Direction::NORTH);
+                dog->SetSpeed(speed);
             }
             else if (dir == "D")
             {
                 dog->SetDirection(Direction::SOUTH);
+                dog->SetSpeed(speed);
             }
             else if (dir == "L")
             {
                 dog->SetDirection(Direction::WEST);
+                dog->SetSpeed(speed);
             }
             else if (dir == "R")
             {
                 dog->SetDirection(Direction::EAST);
+                dog->SetSpeed(speed);
             }
             else
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Invalid direction", req);
             }
-            const double speed = player->GetSession()->GetMap()->GetSpeedForThisMap();
-            dog->SetSpeed(speed);
-
             http::response<http::string_body> res{http::status::ok, req.version()};
             res.set(http::field::content_type, "application/json");
             res.set(http::field::cache_control, "no-cache");
@@ -771,9 +769,17 @@ namespace http_handler
             res.keep_alive(req.keep_alive());
             return res;
         }
+        void DeleteRetiredPlayers()
+        {
+            for (const auto &token : retired_tokens_)
+            {
+                players_.RemoveByToken(token);
+            }
+        }
         template <typename Req>
         http::response<http::string_body> HandleGameTick(const Req &req)
         {
+
             using namespace std::literals;
 
             if (req.method() != http::verb::post)
@@ -802,44 +808,67 @@ namespace http_handler
             }
 
             const auto &obj = json_body.as_object();
-            if (!obj.contains("timeDelta") || !obj.at("timeDelta").is_int64())
+            if (!obj.contains("timeDelta"))
             {
-                return MakeError(http::status::bad_request, "invalidArgument", "Missing or invalid 'timeDelta' field", req);
+                return MakeError(http::status::bad_request, "invalidArgument", "Missing 'timeDelta' field", req);
             }
 
-            int64_t time_delta_ms = obj.at("timeDelta").as_int64();
+            int64_t time_delta_ms;
+
+            const auto &delta_val = obj.at("timeDelta");
+            if (delta_val.is_int64())
+            {
+                time_delta_ms = delta_val.as_int64();
+            }
+            else if (delta_val.is_double())
+            {
+                double double_val = delta_val.as_double();
+                if (double_val < 0 || !std::isfinite(double_val))
+                {
+                    return MakeError(http::status::bad_request, "invalidArgument", "'timeDelta' must be a non-negative finite number", req);
+                }
+                time_delta_ms = static_cast<int64_t>(double_val);
+            }
+            else
+            {
+                return MakeError(http::status::bad_request, "invalidArgument", "'timeDelta' must be a number", req);
+            }
+
             if (time_delta_ms < 0)
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "timeDelta must be non-negative", req);
             }
-            std::vector<Token> retired_tokens;
+
             for (const auto &player_ptr : players_.GetPlayers())
             {
                 auto dog = player_ptr->GetDog();
                 dog->UpdatePosition(time_delta_ms, player_ptr->GetSession().get());
-                if (dog->IsRetired() && !dog->WasRecorded())
+
+                if (dog->IsRetired())
                 {
-                    dog->MarkRecorded();
+                    if (!dog->WasRecorded())
+                    {
+                        record_repo_->SaveRecord(
+                            dog->GetName(),
+                            dog->GetScore(),
+                            dog->GetLifeTime());
+                        dog->MarkRecorded();
+                    }
 
-                    record_repo_->SaveRecord(
-                        dog->GetName(),
-                        dog->GetScore(),
-                        dog->GetLifeTime());
+                    Token token = player_ptr->GetToken().value();
+                    retired_tokens_.push_back(token);
                 }
-                Token token = player_ptr->GetToken().value();
-                retired_tokens.push_back(token);
             }
-
+            /*
             for (const Token &token : retired_tokens)
             {
                 players_.RemoveByToken(token);
-            }
+            }*/
             std::chrono::milliseconds delta{time_delta_ms};
             for (auto &map : game_.GetMaps())
             {
                 const model::Map::Id map_id = map.GetId();
-                // Реализовать simoltaniousTick
-                // В Generate передается разница во времени между предыдущим Generate и нынешним. Учесть(скорее всего все ок)
+
                 std::shared_ptr<GameSession> session;
                 try
                 {
@@ -868,6 +897,12 @@ namespace http_handler
             res.body() = "{}";
             res.content_length(res.body().size());
             res.keep_alive(req.keep_alive());
+            /*
+            for (const Token &token : retired_tokens_)
+            {
+                players_.RemoveByToken(token);
+            }*/
+           DeleteRetiredPlayers();
             if (save_period_ && state_file_path_)
             {
                 int prev = accumulated_time_ms_.fetch_add(delta.count()) + delta.count();
@@ -888,22 +923,28 @@ namespace http_handler
             {
                 auto dog = player_ptr->GetDog();
                 dog->UpdatePosition(millis, player_ptr->GetSession().get());
-                if (dog->IsRetired() && !dog->WasRecorded())
-                {
-                    dog->MarkRecorded();
 
-                    record_repo_->SaveRecord(
-                        dog->GetName(),
-                        dog->GetScore(),
-                        dog->GetLifeTime());
+                if (dog->IsRetired())
+                {
+                    if (!dog->WasRecorded())
+                    {
+
+                        record_repo_->SaveRecord(
+                            dog->GetName(),
+                            dog->GetScore(),
+                            dog->GetLifeTime());
+                        dog->MarkRecorded();
+                    }
+
                     Token token = player_ptr->GetToken().value();
                     retired_tokens.push_back(token);
                 }
             }
+            /*
             for (const Token &token : retired_tokens)
             {
                 players_.RemoveByToken(token);
-            }
+            }*/
 
             for (auto &map : game_.GetMaps())
             {
@@ -929,6 +970,10 @@ namespace http_handler
                     const int new_loot_count = generator->Generate(ms, current_loot, dogs_count);
                     session->AddRandomLoot(new_loot_count, session->GetMap()->GetRoads(), static_cast<int>(loot_types->size()), *loot_types);
                 }
+            }
+            for (const Token &token : retired_tokens)
+            {
+                players_.RemoveByToken(token);
             }
             if (save_period_ && state_file_path_)
             {
@@ -1028,8 +1073,8 @@ namespace http_handler
             : game_{game},
               static_root_{std::move(static_root)},
               api_handler_(game, strand, randomize_spawn, state_file_path, save_period, std::move(record_repo)),
-              randomize_spawn_{randomize_spawn} {}
-
+              randomize_spawn_{randomize_spawn},
+              strand_(strand) {}
         template <typename Body, typename Allocator, typename Send>
         void operator()(http::request<Body, http::basic_fields<Allocator>> &&req, Send &&send)
         {
@@ -1074,10 +1119,11 @@ namespace http_handler
 
             if (target.starts_with("/api/"))
             {
-                api_handler_.HandleRequest(req, std::forward<Send>(send));
+                boost::asio::dispatch(strand_, [this, req, send = std::forward<Send>(send)]() mutable
+                                      { api_handler_.HandleRequest(req, std::forward<Send>(send)); });
+                
                 return;
             }
-
             // Статика
             std::string path = UrlDecode(req.target());
             fs::path full_path = static_root_ / path.substr(1);
@@ -1126,7 +1172,8 @@ namespace http_handler
         fs::path static_root_;
         ApiRequestHandler api_handler_;
         bool randomize_spawn_;
-        std::string UrlDecode(std::string_view str) const
+        net::strand<net::io_context::executor_type> strand_;
+	std::string UrlDecode(std::string_view str) const
         {
             std::ostringstream result;
             for (size_t i = 0; i < str.size(); ++i)
