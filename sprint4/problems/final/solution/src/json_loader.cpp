@@ -159,7 +159,7 @@ namespace json_loader
             buffer << input.rdbuf();
             data = json::parse(buffer.str());
         }
-        catch (...)
+        catch (const boost::system::system_error&)
         {
             throw "Error parsing";
         }

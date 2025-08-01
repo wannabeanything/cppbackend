@@ -68,12 +68,27 @@ public:
           bag_capacity_(0) {}
 
     int GetId() const { return id_; }
-    const std::string &GetName() const { return appeared_name_; }
-    const model::Position &GetPosition() const { return position_; }
-    const model::Position &GetSpeed() const { return speed_; }
-    Direction GetDirection() const { return direction_; }
+    const std::string &GetName() const
+    {
+        return appeared_name_;
+    }
+    const model::Position &GetPosition() const
+    {
+        return position_;
+    }
+    const model::Position &GetSpeed() const
+    {
+        return speed_;
+    }
+    Direction GetDirection() const
+    {
+        return direction_;
+    }
 
-    void SetDirection(Direction dir) { direction_ = dir; }
+    void SetDirection(Direction dir)
+    {
+        direction_ = dir;
+    }
 
     void SetSpeed(double value)
     {
@@ -102,8 +117,14 @@ public:
         current_idle_time_ = 0.0;
     }
 
-    void SetBagCapacityForDog(int size) { bag_capacity_ = size; }
-    bool CanPickUp() const { return inventory_.size() < bag_capacity_; }
+    void SetBagCapacityForDog(int size)
+    {
+        bag_capacity_ = size;
+    }
+    bool CanPickUp() const
+    {
+        return inventory_.size() < bag_capacity_;
+    }
 
     void PickUpItem(int id, int type, int value)
     {
@@ -179,8 +200,14 @@ public:
     {
         return retired_;
     }
-    bool WasRecorded() const { return recorded_; }
-    void MarkRecorded() { recorded_ = true; }
+    bool WasRecorded() const
+    {
+        return recorded_;
+    }
+    void MarkRecorded()
+    {
+        recorded_ = true;
+    }
 
 private:
     int id_;
@@ -211,7 +238,10 @@ private:
 public:
     explicit GameSession(model::Map *map) : map_(map) {}
 
-    model::Map *GetMap() const { return map_; }
+    model::Map *GetMap() const
+    {
+        return map_;
+    }
 
     std::shared_ptr<Dog> AddDog(const std::string &name, bool randomize_spawn = false)
     {
@@ -257,11 +287,23 @@ public:
     {
         return next_loot_id_;
     }
-    const std::unordered_map<int, LostObject> &GetLostObjects() const { return lost_objects_; }
-    std::unordered_map<int, LostObject> &AccessLostObjects() { return lost_objects_; }
+    const std::unordered_map<int, LostObject> &GetLostObjects() const
+    {
+        return lost_objects_;
+    }
+    std::unordered_map<int, LostObject> &AccessLostObjects()
+    {
+        return lost_objects_;
+    }
 
-    const std::vector<std::shared_ptr<Dog>> &GetDogs() const { return dogs_; }
-    std::vector<std::shared_ptr<Dog>> &AccessDogs() { return dogs_; }
+    const std::vector<std::shared_ptr<Dog>> &GetDogs() const
+    {
+        return dogs_;
+    }
+    std::vector<std::shared_ptr<Dog>> &AccessDogs()
+    {
+        return dogs_;
+    }
 
     SessionGathererProvider GetGathererProvider(const std::vector<model::Position> &starts,
                                                 const std::vector<model::Position> &ends) const
@@ -303,9 +345,10 @@ private:
 
         collision_detector::Gatherer GetGatherer(size_t idx) const override
         {
+            const double player_width = 0.6;
             return {{starts_[idx].x, starts_[idx].y},
                     {ends_[idx].x, ends_[idx].y},
-                    0.6};
+                    player_width};
         }
 
     private:
@@ -377,10 +420,11 @@ inline void Dog::UpdatePosition(int ms, GameSession *session)
     // офис — сдача предметов
     for (const auto &office : session->GetMap()->GetOffices())
     {
+        const double base_width = 0.55;
         const auto &pos = office.GetPosition();
         double dx = static_cast<double>(pos.x) - position_.x;
         double dy = static_cast<double>(pos.y) - position_.y;
-        if (dx * dx + dy * dy <= 0.55 * 0.55)
+        if (dx * dx + dy * dy <= base_width * base_width)
         {
             ClearBag();
             break;

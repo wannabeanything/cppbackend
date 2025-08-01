@@ -310,8 +310,8 @@ namespace http_handler
                 }
                 catch (const std::exception &e)
                 {
-                    // Можно логировать или оставить пустым, если поле необязательное
-                    map_obj["lootTypes"] = json::array(); // fallback, чтобы было всегда
+                    
+                    map_obj["lootTypes"] = json::array(); 
                 }
                 http::response<http::string_body> res{http::status::ok, req.version()};
                 res.set(http::field::content_type, "application/json");
@@ -424,7 +424,7 @@ namespace http_handler
             {
                 json_body = json::parse(req.body());
             }
-            catch (...)
+            catch (const boost::json::system_error&)
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Join game request parse error", req);
             }
@@ -701,7 +701,7 @@ namespace http_handler
             {
                 json_body = json::parse(req.body());
             }
-            catch (...)
+            catch (const boost::json::system_error&)
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Failed to parse request body", req);
             }
@@ -797,7 +797,7 @@ namespace http_handler
             {
                 json_body = json::parse(req.body());
             }
-            catch (...)
+            catch (const boost::json::system_error&)
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "Failed to parse tick request JSON", req);
             }
@@ -859,11 +859,7 @@ namespace http_handler
                     retired_tokens_.push_back(token);
                 }
             }
-            /*
-            for (const Token &token : retired_tokens)
-            {
-                players_.RemoveByToken(token);
-            }*/
+            
             std::chrono::milliseconds delta{time_delta_ms};
             for (auto &map : game_.GetMaps())
             {
@@ -874,7 +870,7 @@ namespace http_handler
                 {
                     session = sessions_.at(*map_id);
                 }
-                catch (...)
+                catch (const std::out_of_range&)
                 {
                     continue;
                 }
@@ -897,11 +893,7 @@ namespace http_handler
             res.body() = "{}";
             res.content_length(res.body().size());
             res.keep_alive(req.keep_alive());
-            /*
-            for (const Token &token : retired_tokens_)
-            {
-                players_.RemoveByToken(token);
-            }*/
+            
            DeleteRetiredPlayers();
             if (save_period_ && state_file_path_)
             {
@@ -940,11 +932,7 @@ namespace http_handler
                     retired_tokens.push_back(token);
                 }
             }
-            /*
-            for (const Token &token : retired_tokens)
-            {
-                players_.RemoveByToken(token);
-            }*/
+            
 
             for (auto &map : game_.GetMaps())
             {
@@ -955,7 +943,7 @@ namespace http_handler
                 {
                     session = sessions_.at(*map_id);
                 }
-                catch (...)
+                catch (const std::out_of_range&)
                 {
                     continue;
                 }
@@ -1025,7 +1013,7 @@ namespace http_handler
                     max_items = std::stoul(params["maxItems"]);
                 }
             }
-            catch (...)
+            catch (const std::invalid_argument&)
             {
                 return MakeError(http::status::bad_request, "invalidArgument", "start and maxItems must be integers", req);
             }
