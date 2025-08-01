@@ -398,7 +398,7 @@ namespace http_handler
             }
 
             json::value json_body;
-            
+            try
             {
                 json_body = json::parse(req.body());
             }
